@@ -49,6 +49,17 @@
                 }
             });
         }
+        const origClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+        if (origClientHeight) {
+            Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+                get: function() {
+                    if (this.classList && (this.classList.contains('adsbox') || this.classList.contains('ad-bait'))) {
+                        return 1;
+                    }
+                    return origClientHeight.get.call(this);
+                }
+            });
+        }
     } catch(e) {}
 
     // 4. Neutralize Anti-DevTools Image.id Trap
@@ -61,7 +72,7 @@
     };
     console.clear = function() {};
 
-    // 5. Block Ad Popups & Redirects on Streaming Sites
+    // 5. Block Ad Popups, Redirects & Betting Telegram links
     const origOpen = window.open;
     window.open = function(url, target, features) {
         if (url && (
@@ -71,12 +82,12 @@
             url.includes('ad') ||
             url.includes('track') ||
             url.includes('click') ||
-            url.includes('wugroan')
+            url.includes('wugroan') ||
+            url.includes('t.me/') // Block popup redirects to betting Telegram channels
         )) {
-            console.warn('[Stream Guard] Blocked ad popup:', url);
+            console.warn('[Stream Guard] Blocked ad/telegram popup:', url);
             return null;
         }
-        // If empty URL or ad-like call
         if (!url || url === 'about:blank' || features) {
             console.warn('[Stream Guard] Blocked blank/suspicious popup');
             return null;
@@ -84,7 +95,7 @@
         return origOpen.apply(window, arguments);
     };
 
-    // 6. Restore Context Menu & Keys
+    // 6. Restore Context Menu & Function Keys (F12, Inspect)
     const origAddEventListener = EventTarget.prototype.addEventListener;
     EventTarget.prototype.addEventListener = function(type, listener, options) {
         if (type === 'contextmenu') return;
@@ -100,8 +111,34 @@
         return origAddEventListener.call(this, type, listener, options);
     };
 
-    // 7. Inject Global Anti-Popup CSS
+    // 7. Inject Anti-Ad & Anti-Telegram-Overlay CSS
     const css = `
+        /* === Telegram Betting Notification Box & Floating Overlays === */
+        #tgAdNotification,
+        .tg-ad-notification,
+        #tgAdBox,
+        .tg-ad-box,
+        [id*="tgAd"],
+        [id*="tg-ad"],
+        [class*="tg-ad"],
+        .tg-ad-badge,
+        .tg-ad-header,
+        .tg-ad-stats,
+        .tg-ad-features,
+        .tg-ad-btn,
+        .tg-ad-close,
+        div:has(> #tgAdBox),
+        div:has(> .tg-ad-box),
+        div:has(> .tg-ad-badge),
+
+        /* === Bottom In-Player Banners (e.g., KoraPlus) === */
+        div[class*="koraplus"],
+        div[id*="koraplus"],
+        a[href*="koraplus"],
+        div:has(> img[alt*="KoraPlus"]),
+        div:has(> a[href*="play.google.com/store/apps/details?id=com.kora"]),
+
+        /* === Anti-Adblock & Click-Shield Modals === */
         #antiAdblockPopup,
         div:has(#reloadBtn),
         #alba-click-shield,
@@ -114,11 +151,19 @@
             pointer-events: none !important;
             width: 0 !important;
             height: 0 !important;
-            z-index: -99999 !important;
+            max-width: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+            position: absolute !important;
+            top: -99999px !important;
+            left: -99999px !important;
+            z-index: -9999999 !important;
         }
+
         body {
             overflow: auto !important;
         }
+
         .adsbox {
             display: block !important;
             height: 1px !important;
@@ -129,39 +174,51 @@
     styleEl.textContent = css;
     (document.head || document.documentElement).appendChild(styleEl);
 
-    // 8. Relentless Removal of Anti-Adblock Overlays
+    // 8. Relentless Removal of Anti-Adblock & Telegram Ad Overlays
     function purgeOverlays() {
-        const popup = document.getElementById('antiAdblockPopup');
-        if (popup) {
-            popup.remove();
-            document.body.style.overflow = 'auto';
-        }
-        const shield = document.getElementById('alba-click-shield');
-        if (shield) shield.remove();
+        // Targeted selector purge
+        const selectors = [
+            '#tgAdNotification',
+            '.tg-ad-notification',
+            '#tgAdBox',
+            '.tg-ad-box',
+            '[id*="tgAd"]',
+            '[id*="tg-ad"]',
+            '[class*="tg-ad"]',
+            '#antiAdblockPopup',
+            '#alba-click-shield',
+            'div:has(#reloadBtn)'
+        ];
 
-        const reloadBtn = document.getElementById('reloadBtn');
-        if (reloadBtn) {
-            const parent = reloadBtn.closest('div');
-            if (parent) parent.remove();
-            document.body.style.overflow = 'auto';
-        }
+        try {
+            document.querySelectorAll(selectors.join(',')).forEach(el => {
+                try { el.remove(); } catch(e) {}
+            });
+        } catch(e) {}
 
-        // Generic check for any popup mentioning adblock / brave
-        const popups = document.querySelectorAll('div[style*="fixed"]');
+        // Content check for dynamic popups / overlays
+        const popups = document.querySelectorAll('div[style*="fixed"], div[style*="absolute"], div.show');
         popups.forEach(p => {
-            if (p.innerText && (
-                p.innerText.includes('تم اكتشاف مانع إعلانات') ||
-                p.innerText.includes('Brave مع الحماية') ||
-                p.innerText.includes('تعطيل الحماية أو تغيير المتصفح')
-            )) {
-                p.remove();
-                document.body.style.overflow = 'auto';
+            const txt = p.innerText || '';
+            if (
+                txt.includes('قناة المراهنات') ||
+                txt.includes('مراهنات كرة القدم') ||
+                txt.includes('توقعات مجانية') ||
+                txt.includes('حمل KoraPlus') ||
+                txt.includes('تم اكتشاف مانع إعلانات') ||
+                txt.includes('Brave مع الحماية') ||
+                txt.includes('تعطيل الحماية أو تغيير المتصفح')
+            ) {
+                try {
+                    p.remove();
+                    if (document.body) document.body.style.overflow = 'auto';
+                } catch(e) {}
             }
         });
     }
 
     purgeOverlays();
-    setInterval(purgeOverlays, 100);
+    setInterval(purgeOverlays, 150);
 
     // 9. Fix Koora Online auto-search fallback
     function fixKooraOnline() {

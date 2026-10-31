@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Stream Guard & Anti-Adblock Bypass",
-  "version": "1.1.0",
-  "description": "تخطي حظر مانع الإعلانات، كشف متصفح Brave، الإعلانات المنبثقة، ومصائد الفحص في جميع مواقع البث المباشر والرياضة.",
+  "version": "1.2.0",
+  "description": "تخطي حظر مانع الإعلانات، كشف متصفح Brave، النوافذ المنبثقة، وإزالة إعلانات التليجرام والمراهنات العائمة (tg-ad-notification) وبانرات المشغل.",
   "icons": {
     "48": "icon.png"
   },
